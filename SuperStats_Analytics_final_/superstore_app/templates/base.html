@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Superstore Analytics{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+
+  <!-- Sticky Glassmorphic Navbar -->
+  <header class="navbar">
+    <div class="navbar-container">
+      <a href="/" class="navbar-logo">
+        <span class="logo-icon">🌌</span>
+        <span class="app-name">Super<span>Stats</span></span>
+      </a>
+
+      <!-- Hamburger Menu for Mobile -->
+      <button class="mobile-toggle" id="mobile-toggle" aria-label="Toggle Navigation">
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+      </button>
+
+      <!-- Nav Links -->
+      <nav class="nav-links" id="nav-links">
+        <a href="/" class="nav-item {% block nav_dash %}{% endblock %}">Dashboard</a>
+        <a href="/descriptive" class="nav-item {% block nav_desc %}{% endblock %}">Descriptive Stats</a>
+        <a href="/probability" class="nav-item {% block nav_prob %}{% endblock %}">Probability</a>
+        <a href="/regression" class="nav-item {% block nav_reg %}{% endblock %}">Regression</a>
+        <a href="/rawdata" class="nav-item {% block nav_raw %}{% endblock %}">Raw Data</a>
+      </nav>
+
+      <!-- Actions (Theme Toggle & Badge) -->
+      <div class="navbar-actions">
+        <button id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle Theme">
+          <span class="theme-icon-light">☀️</span>
+          <span class="theme-icon-dark">🌙</span>
+        </button>
+        <span class="records-badge">9,994 Records</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Ambient Neon Background Blobs (visible in dark mode) -->
+  <div class="glow-blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <!-- Main Content Wrapper -->
+  <main class="main-wrapper">
+    <div class="content-header">
+      <h1 class="page-heading">{% block page_title %}Dashboard{% endblock %}</h1>
+      <span class="university-tag"></span>
+    </div>
+
+    <div class="content-body">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <!-- Core JavaScript -->
+  <script>
+    // Theme Manager
+    const themeToggleBtn = document.getElementById('theme-toggle');
+    const mobileToggleBtn = document.getElementById('mobile-toggle');
+    const navLinks = document.getElementById('nav-links');
+
+    // Theme initialization (defaulting to dark mode)
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    if (savedTheme === 'dark') {
+      document.body.classList.add('dark-theme');
+    } else {
+      document.body.classList.remove('dark-theme');
+    }
+
+    themeToggleBtn.addEventListener('click', () => {
+      document.body.classList.toggle('dark-theme');
+      const isDark = document.body.classList.contains('dark-theme');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+
+      // Dispatch system-wide event for Chart.js rendering
+      window.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme: isDark ? 'dark' : 'light' } }));
+    });
+
+    // Mobile Navbar Toggler
+    mobileToggleBtn.addEventListener('click', () => {
+      mobileToggleBtn.classList.toggle('active');
+      navLinks.classList.toggle('active');
+    });
+
+    // Close menu when clicking items or clicking outside
+    document.addEventListener('click', (e) => {
+      if (!mobileToggleBtn.contains(e.target) && !navLinks.contains(e.target)) {
+        mobileToggleBtn.classList.remove('active');
+        navLinks.classList.remove('active');
+      }
+    });
+  </script>
+
+  {% block scripts %}{% endblock %}
+</body>
+
+</html>

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Dashboard Overview — Demand Metric{% endblock %}
+{% block nav_dash %}active{% endblock %}
+{% block page_title %}Dashboard <span>Overview</span>{% endblock %}
+
+{% block content %}
+
+<!-- KPI Cards -->
+<div class="stats-grid" id="kpi-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Sales</div>
+    <div class="stat-value" id="kpi-sales">—</div>
+    <div class="stat-note">All-time revenue</div>
+  </div>
+  <div class="stat-card teal">
+    <div class="stat-label">Total Profit</div>
+    <div class="stat-value" id="kpi-profit">—</div>
+    <div class="stat-note">Net earnings</div>
+  </div>
+  <div class="stat-card purple">
+    <div class="stat-label">Total Orders</div>
+    <div class="stat-value" id="kpi-orders">—</div>
+    <div class="stat-note">Transactions</div>
+  </div>
+  <div class="stat-card red">
+    <div class="stat-label">Avg Discount</div>
+    <div class="stat-value" id="kpi-disc">—</div>
+    <div class="stat-note">Mean discount applied</div>
+  </div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="chart-grid chart-grid-2">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div>
+        <div class="chart-card-title">Sales by Category</div>
+        <div class="chart-card-sub">Distribution of total revenue</div>
+      </div>
+      <span class="chart-tag purple">PIE</span>
+    </div>
+    <canvas id="catChart" height="200"></canvas>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div>
+        <div class="chart-card-title">Sales by Region</div>
+        <div class="chart-card-sub">Geographic performance</div>
+      </div>
+      <span class="chart-tag teal">BAR</span>
+    </div>
+    <canvas id="regChart" height="200"></canvas>
+  </div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="chart-grid chart-grid-2">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div>
+        <div class="chart-card-title">Monthly Sales Trend</div>
+        <div class="chart-card-sub">Average revenue per month</div>
+      </div>
+      <span class="chart-tag amber">LINE</span>
+    </div>
+    <canvas id="monthChart" height="200"></canvas>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div>
+        <div class="chart-card-title">Top Sub-Categories by Profit</div>
+        <div class="chart-card-sub">Most profitable segments</div>
+      </div>
+      <span class="chart-tag teal">BAR</span>
+    </div>
+    <canvas id="subChart" height="200"></canvas>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let charts = {};
+let overviewData = null;
+
+function getThemeColors() {
+  const isDark = document.body.classList.contains('dark-theme');
+  return {
+    text: isDark ? '#9ca3af' : '#64748b',
+    grid: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(15, 23, 42, 0.06)',
+    teal: isDark ? '#2dd4bf' : '#0f766e',
+    gold: isDark ? '#fbbf24' : '#d97706',
+    blue: isDark ? '#60a5fa' : '#2563eb',
+    orange: isDark ? '#fb923c' : '#ea580c'
+  };
+}
+
+function renderDashboardCharts() {
+  if (!overviewData) return;
+  const colors = getThemeColors();
+
+  // Reset defaults
+  Chart.defaults.color = colors.text;
+  Chart.defaults.borderColor = colors.grid;
+  Chart.defaults.font.family = 'Outfit';
+
+  // Destroy previous instances
+  Object.keys(charts).forEach(key => {
+    if (charts[key]) charts[key].destroy();
+  });
+
+  const isDark = document.body.classList.contains('dark-theme');
+
+  // Cat Chart (Doughnut)
+  charts.catChart = new Chart(document.getElementById('catChart'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(overviewData.breakdowns.category),
+      datasets: [{
+        data: Object.values(overviewData.breakdowns.category),
+        backgroundColor: [colors.teal, colors.gold, colors.blue],
+        borderWidth: 2,
+        borderColor: isDark ? '#111928' : '#fff',
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: colors.text, font: { size: 12, family: 'Outfit' } }
+        }
+      },
+      cutout: '65%'
+    }
+  });
+
+  // Reg Chart (Bar)
+  charts.regChart = new Chart(document.getElementById('regChart'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(overviewData.breakdowns.region),
+      datasets: [{
+        label: 'Sales ($)',
+        data: Object.values(overviewData.breakdowns.region),
+        backgroundColor: [colors.teal, colors.gold, colors.blue, colors.orange],
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { grid: { color: colors.grid }, ticks: { color: colors.text, callback: v => '$' + (v/1000).toFixed(0) + 'k' } },
+        x: { grid: { display: false }, ticks: { color: colors.text } }
+      }
+    }
+  });
+
+  // Month Chart (Line)
+  charts.monthChart = new Chart(document.getElementById('monthChart'), {
+    type: 'line',
+    data: {
+      labels: Object.keys(overviewData.breakdowns.monthly_trend),
+      datasets: [{
+        label: 'Avg Sales ($)',
+        data: Object.values(overviewData.breakdowns.monthly_trend),
+        borderColor: colors.teal,
+        backgroundColor: colors.teal + '15',
+        tension: 0.4,
+        fill: true,
+        pointBackgroundColor: colors.teal,
+        pointBorderColor: isDark ? '#090d16' : '#fff',
+        pointRadius: 5
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { grid: { color: colors.grid }, ticks: { color: colors.text } },
+        x: { grid: { display: false }, ticks: { color: colors.text } }
+      }
+    }
+  });
+
+  // Sub Chart (Horizontal Bar)
+  charts.subChart = new Chart(document.getElementById('subChart'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(overviewData.breakdowns.top_subcategories),
+      datasets: [{
+        label: 'Profit ($)',
+        data: Object.values(overviewData.breakdowns.top_subcategories),
+        backgroundColor: colors.blue,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: colors.grid }, ticks: { color: colors.text } },
+        y: { grid: { display: false }, ticks: { font: { size: 11, family: 'Outfit' }, color: colors.text } }
+      }
+    }
+  });
+}
+
+fetch('/api/v1/analytics/overview')
+  .then(r => r.json())
+  .then(res => {
+    overviewData = res.payload;
+
+    document.getElementById('kpi-sales').textContent   = '$' + overviewData.totals.sales.toLocaleString();
+    document.getElementById('kpi-profit').textContent  = '$' + overviewData.totals.profit.toLocaleString();
+    document.getElementById('kpi-orders').textContent  = overviewData.totals.orders.toLocaleString();
+    document.getElementById('kpi-disc').textContent    = overviewData.totals.discount_avg.toFixed(1) + '%';
+
+    renderDashboardCharts();
+  });
+
+window.addEventListener('themeChanged', renderDashboardCharts);
+</script>
+{% endblock %}

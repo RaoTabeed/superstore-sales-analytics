@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}Descriptive Statistics — Demand Metric{% endblock %}
+{% block nav_desc %}active{% endblock %}
+{% block page_title %}Descriptive <span>Statistics</span>{% endblock %}
+
+{% block content %}
+
+<div class="controls">
+  <select id="col-select">
+    <option value="Sales">Sales Revenue</option>
+    <option value="Profit">Profit</option>
+    <option value="Quantity">Quantity</option>
+    <option value="Discount">Discount</option>
+  </select>
+  <button id="load-btn" class="btn btn-primary">Analyze Variable</button>
+</div>
+
+<div id="loading" class="loading" style="display:none;">
+  <div class="spinner"></div> Processing Analytics...
+</div>
+
+<div id="stats-content" style="display:none;">
+  <div class="stats-panel">
+    <div class="stat-item" id="card-mean"><div class="stat-item-label">Mean (μ)</div><div class="stat-item-value" id="s-mean"></div></div>
+    <div class="stat-item" id="card-med"><div class="stat-item-label">Median</div><div class="stat-item-value" id="s-med"></div></div>
+    <div class="stat-item" id="card-mode"><div class="stat-item-label">Mode</div><div class="stat-item-value" id="s-mode"></div></div>
+    <div class="stat-item" id="card-std"><div class="stat-item-label">Std Deviation (σ)</div><div class="stat-item-value" id="s-std"></div></div>
+    <div class="stat-item" id="card-var"><div class="stat-item-label">Variance (σ²)</div><div class="stat-item-value" id="s-var"></div></div>
+    <div class="stat-item" id="card-cv"><div class="stat-item-label">CV (%)</div><div class="stat-item-value" id="s-cv"></div></div>
+    <div class="stat-item" id="card-q1"><div class="stat-item-label">Q1 (25th Pct)</div><div class="stat-item-value" id="s-q1"></div></div>
+    <div class="stat-item" id="card-q3"><div class="stat-item-label">Q3 (75th Pct)</div><div class="stat-item-value" id="s-q3"></div></div>
+    <div class="stat-item" id="card-iqr"><div class="stat-item-label">IQR</div><div class="stat-item-value" id="s-iqr"></div></div>
+    <div class="stat-item" id="card-cqd"><div class="stat-item-label">Coeff. of Quartile Dev.</div><div class="stat-item-value" id="s-cqd"></div></div>
+    <div class="stat-item" id="card-range"><div class="stat-item-label">Range</div><div class="stat-item-value" id="s-range"></div></div>
+    <div class="stat-item" id="card-skew"><div class="stat-item-label">Skewness</div><div class="stat-item-value" id="s-skew"></div></div>
+    <div class="stat-item" id="card-kurt"><div class="stat-item-label">Kurtosis</div><div class="stat-item-value" id="s-kurt"></div></div>
+  </div>
+
+  <div class="chart-grid chart-grid-2" id="ci-outliers-grid">
+    <div class="stat-card" id="card-ci">
+      <div class="chart-card-header">
+        <div><div class="chart-card-title">95% Confidence Interval</div></div>
+      </div>
+      <div style="font-family:'Roboto Mono',monospace;font-size:22px;color:var(--primary);margin-top:20px;text-align:center;font-weight:600;">
+        [ <span id="ci-l"></span> , <span id="ci-u"></span> ]
+      </div>
+      <div class="stat-note" style="text-align:center;">Estimating population mean parameter</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="chart-card-header">
+        <div><div class="chart-card-title">Outliers Detected</div></div>
+      </div>
+      <div style="font-family:'Roboto Mono',monospace;font-size:32px;color:var(--danger);margin-top:10px;text-align:center;font-weight:700;" id="outliers-count"></div>
+      <div class="stat-note" style="text-align:center;">Based on 1.5 × IQR Rule</div>
+    </div>
+  </div>
+
+  <div class="chart-grid chart-grid-2">
+    <!-- Histogram -->
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div><div class="chart-card-title">Distribution (Histogram)</div><div class="chart-card-sub">Sales Distribution</div></div>
+        <span class="chart-tag teal">HIST</span>
+      </div>
+      <canvas id="histChart" height="200"></canvas>
+    </div>
+
+    <!-- Frequency Table -->
+    <div class="data-table-container" style="max-height: 350px; overflow-y:auto;">
+      <table class="data-table" id="freq-table">
+        <thead>
+          <tr>
+            <th>Class Interval</th>
+            <th>Freq (f)</th>
+            <th>Relative Freq</th>
+            <th>Cum. Freq</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let fullData = null;
+let histChartInst = null;
+
+function getThemeColors() {
+  const isDark = document.body.classList.contains('dark-theme');
+  return {
+    text: isDark ? '#9ca3af' : '#64748b',
+    grid: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(15, 23, 42, 0.06)',
+    blue: isDark ? '#60a5fa' : '#2563eb'
+  };
+}
+
+function loadStats() {
+  document.getElementById('loading').style.display = 'flex';
+  document.getElementById('stats-content').style.display = 'none';
+
+  if (!fullData) {
+    fetch('/api/v1/analytics/descriptive')
+      .then(r => r.json())
+      .then(res => {
+        fullData = res.payload;
+        renderStats();
+      });
+  } else {
+    renderStats();
+  }
+}
+
+function renderStats() {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('stats-content').style.display = 'block';
+
+  let col = document.getElementById('col-select').value;
+  if(col === 'Sales Revenue') col = 'Sales';
+  
+  const d = fullData.variables[col];
+  const fm = v => v !== null && v !== undefined ? v.toLocaleString() : 'N/A';
+
+  document.getElementById('s-mean').textContent = fm(d.central_tendency.mean);
+  document.getElementById('s-med').textContent  = fm(d.central_tendency.median);
+  document.getElementById('s-mode').textContent = fm(d.central_tendency.mode);
+  
+  document.getElementById('s-std').textContent  = fm(d.dispersion.std);
+  document.getElementById('s-var').textContent  = fm(d.dispersion.var);
+  document.getElementById('s-cv').textContent   = d.dispersion.cv ? d.dispersion.cv + '%' : 'N/A';
+  document.getElementById('s-range').textContent= fm(d.dispersion.range);
+
+  document.getElementById('s-q1').textContent   = fm(d.position.q1);
+  document.getElementById('s-q3').textContent   = fm(d.position.q3);
+  document.getElementById('s-iqr').textContent  = fm(d.position.iqr);
+
+  const cqdVal = d.position.cqd !== undefined ? d.position.cqd : null;
+  let cqdFormatted = 'N/A';
+  if (cqdVal !== null) {
+    cqdFormatted = cqdVal.toFixed(4);
+  } else if (d.position.q1 !== undefined && d.position.q3 !== undefined) {
+    const q1 = d.position.q1;
+    const q3 = d.position.q3;
+    if (q3 + q1 !== 0) {
+      cqdFormatted = ((q3 - q1) / (q3 + q1)).toFixed(4);
+    }
+  }
+  document.getElementById('s-cqd').textContent = cqdFormatted;
+  
+  document.getElementById('s-skew').textContent = fm(d.shape.skewness);
+  document.getElementById('s-kurt').textContent = fm(d.shape.kurtosis);
+  document.getElementById('outliers-count').textContent = fm(d.shape.outlier_count);
+
+  document.getElementById('ci-l').textContent = fm(d.confidence_interval.lower);
+  document.getElementById('ci-u').textContent = fm(d.confidence_interval.upper);
+
+  const outlierCount = d.shape.outlier_count || 0;
+  const hasOutliers = outlierCount > 0;
+
+  // Parametric Cards (to hide if hasOutliers is true)
+  const parametricCards = ['card-mean', 'card-mode', 'card-std', 'card-var', 'card-cv', 'card-range', 'card-skew', 'card-kurt'];
+  parametricCards.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = hasOutliers ? 'none' : 'block';
+  });
+
+  // Robust Cards (to show if hasOutliers is true)
+  const robustCards = ['card-med', 'card-q1', 'card-q3', 'card-iqr', 'card-cqd'];
+  robustCards.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = hasOutliers ? 'block' : 'none';
+  });
+
+  // Toggle confidence interval card visibility (hide if outliers are present)
+  const ciCard = document.getElementById('card-ci');
+  const ciGrid = document.getElementById('ci-outliers-grid');
+  if (ciCard && ciGrid) {
+    if (hasOutliers) {
+      ciCard.style.display = 'none';
+      ciGrid.style.gridTemplateColumns = '1fr';
+    } else {
+      ciCard.style.display = 'block';
+      ciGrid.style.gridTemplateColumns = '1fr 1fr';
+    }
+  }
+
+  // Render Histogram
+  const colors = getThemeColors();
+  Chart.defaults.color = colors.text;
+  Chart.defaults.borderColor = colors.grid;
+  Chart.defaults.font.family = 'Outfit';
+
+  if (col === 'Sales' && fullData.histogram) {
+    if (histChartInst) histChartInst.destroy();
+
+    const bins   = fullData.histogram.bins;
+    const counts = fullData.histogram.counts;
+    const labels = [];
+    for (let i = 0; i < counts.length; i++) {
+      labels.push(`${Math.round(bins[i])}-${Math.round(bins[i+1])}`);
+    }
+
+    histChartInst = new Chart(document.getElementById('histChart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Frequency',
+          data: counts,
+          backgroundColor: colors.blue,
+          borderRadius: 4,
+          barPercentage: 1.0,
+          categoryPercentage: 1.0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: colors.text } },
+          y: { grid: { color: colors.grid }, ticks: { color: colors.text } }
+        }
+      }
+    });
+
+    const tbody = document.querySelector('#freq-table tbody');
+    tbody.innerHTML = '';
+    fullData.frequency_distribution.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${r.interval}</td><td>${r.freq}</td><td>${r.rel_freq}</td><td>${r.cum_freq}</td>`;
+      tbody.appendChild(tr);
+    });
+  } else {
+    if (histChartInst) histChartInst.destroy();
+    document.querySelector('#freq-table tbody').innerHTML = '<tr><td colspan="4" style="text-align:center;">Frequency data only available for Sales</td></tr>';
+  }
+}
+
+document.getElementById('load-btn').addEventListener('click', loadStats);
+window.addEventListener('themeChanged', () => {
+  if (fullData) renderStats();
+});
+loadStats();
+</script>
+{% endblock %}

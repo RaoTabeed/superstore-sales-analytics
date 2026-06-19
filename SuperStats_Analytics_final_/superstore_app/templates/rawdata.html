@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Raw Dataset — Demand Metric{% endblock %}
+{% block nav_raw %}active{% endblock %}
+{% block page_title %}Raw <span>Dataset</span>{% endblock %}
+
+{% block content %}
+<div class="controls">
+  <input type="text" id="search-input" placeholder="Search by Product Name..." style="flex:1; min-width: 200px;">
+  <button id="search-btn" class="btn btn-primary">Search</button>
+</div>
+
+<div class="data-table-container">
+  <table class="data-table" id="raw-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Region</th>
+        <th>Category</th>
+        <th>Product Name</th>
+        <th>Sales</th>
+        <th>Qty</th>
+        <th>Disc</th>
+        <th>Profit</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div class="controls" style="margin-top: 24px; justify-content: space-between; align-items: center;">
+  <div style="font-size: 13px; color: var(--text-muted);" id="page-info">Showing page 1</div>
+  <div style="display: flex; gap: 8px;">
+    <button class="btn btn-outline" id="prev-btn" style="border: 1px solid var(--border); color: var(--text-main);">Previous</button>
+    <button class="btn btn-primary" id="next-btn">Next Page</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+
+function loadData() {
+  const q = document.getElementById('search-input').value;
+  
+  fetch(`/api/v1/data/records?page=${currentPage}&search=${encodeURIComponent(q)}`)
+    .then(r => r.json())
+    .then(res => {
+      const data = res.payload;
+      const tbody = document.querySelector('#raw-table tbody');
+      tbody.innerHTML = '';
+      
+      data.data.forEach(r => {
+        const tr = document.createElement('tr');
+        
+        let profStyle = '';
+        if (r.Profit > 0) profStyle = 'color: var(--success); font-weight: 600;';
+        else if (r.Profit < 0) profStyle = 'color: var(--danger); font-weight: 600;';
+
+        tr.innerHTML = `
+          <td>${r['Order Date']}</td>
+          <td>${r.Region}</td>
+          <td><span class="badge" style="background: var(--primary-light); color: var(--primary); border: 1px solid var(--border);">${r.Category}</span></td>
+          <td style="max-width:250px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${r['Product Name']}">${r['Product Name']}</td>
+          <td style="font-family:'Fira Code',monospace;">$${r.Sales.toFixed(2)}</td>
+          <td>${r.Quantity}</td>
+          <td>${(r.Discount * 100).toFixed(0)}%</td>
+          <td style="${profStyle} font-family:'Fira Code',monospace;">$${r.Profit.toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('page-info').textContent = `Page ${data.current_page} (Total Records: ${data.total_records.toLocaleString()})`;
+      
+      document.getElementById('prev-btn').disabled = currentPage === 1;
+      document.getElementById('next-btn').disabled = (currentPage * 50) >= data.total_records;
+    });
+}
+
+document.getElementById('search-btn').addEventListener('click', () => {
+  currentPage = 1;
+  loadData();
+});
+
+document.getElementById('search-input').addEventListener('keypress', (e) => {
+  if(e.key === 'Enter') {
+    currentPage = 1;
+    loadData();
+  }
+});
+
+document.getElementById('prev-btn').addEventListener('click', () => {
+  if (currentPage > 1) {
+    currentPage--;
+    loadData();
+  }
+});
+
+document.getElementById('next-btn').addEventListener('click', () => {
+  currentPage++;
+  loadData();
+});
+
+loadData();
+</script>
+{% endblock %}

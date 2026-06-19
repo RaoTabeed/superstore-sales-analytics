@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% block title %}Probability Models — Demand Metric{% endblock %}
+{% block nav_prob %}active{% endblock %}
+{% block page_title %}Probability <span>Models</span>{% endblock %}
+
+{% block content %}
+<div id="loading" class="loading">
+  <div class="spinner"></div> Generating Probability Models...
+</div>
+
+<div id="prob-content" style="display: none;">
+
+  <!-- Basics -->
+  <div class="chart-grid chart-grid-2">
+    <div class="stat-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Empirical Probabilities</div>
+          <div class="chart-card-sub">P(E) = n(E) / n(S)</div>
+        </div>
+      </div>
+      <div class="stats-panel" style="grid-template-columns: 1fr; gap: 12px; margin-bottom: 0;">
+        <div class="stat-item">
+          <div class="stat-item-label">P(Sales > $500)</div>
+          <div class="stat-item-value" id="emp-s500"></div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item-label">P(Profit > 0)</div>
+          <div class="stat-item-value" id="emp-profit"></div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item-label">P(Discount > 20%)</div>
+          <div class="stat-item-value" id="emp-disc"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Conditional Analytics</div>
+          <div class="chart-card-sub">P(A|B) = P(A ∩ B) / P(B)</div>
+        </div>
+      </div>
+      <div class="stats-panel" style="grid-template-columns: 1fr; gap: 12px; margin-bottom: 0;">
+        <div class="stat-item" style="border-left: 4px solid var(--danger);">
+          <div class="stat-item-label">P(Loss | Discount > 20%)</div>
+          <div class="stat-item-value" id="cond-loss"></div>
+        </div>
+        <div class="stat-item" style="border-left: 4px solid var(--success);">
+          <div class="stat-item-label">P(Profit > 0 | Sales > $500)</div>
+          <div class="stat-item-value" id="cond-prof"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Distributions -->
+  <div class="chart-grid chart-grid-3">
+    <!-- Binomial -->
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Binomial</div>
+          <div class="chart-card-sub" id="binom-desc"></div>
+        </div>
+        <span class="chart-tag purple">PMF</span>
+      </div>
+      <canvas id="binomChart" height="200"></canvas>
+    </div>
+
+    <!-- Poisson -->
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Poisson</div>
+          <div class="chart-card-sub" id="poisson-desc"></div>
+        </div>
+        <span class="chart-tag teal">PMF</span>
+      </div>
+      <canvas id="poissonChart" height="200"></canvas>
+    </div>
+
+    <!-- Hypergeometric -->
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Hypergeometric</div>
+          <div class="chart-card-sub" id="hyper-desc"></div>
+        </div>
+        <span class="chart-tag amber">PMF</span>
+      </div>
+      <canvas id="hyperChart" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Normality Test & Bell Curve -->
+  <div class="chart-grid chart-grid-2">
+    <!-- Bell Curve -->
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Normal Distribution</div>
+          <div class="chart-card-sub">Bell Curve for Sales</div>
+        </div>
+        <span class="chart-tag teal">PDF</span>
+      </div>
+      <canvas id="normalChart" height="200"></canvas>
+    </div>
+
+    <div class="stat-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Normality Test (Shapiro-Wilk)</div>
+          <div class="chart-card-sub">Checking if Sales are normally distributed</div>
+        </div>
+      </div>
+      <div class="stats-panel" style="grid-template-columns: 1fr 1fr;">
+        <div class="stat-item">
+          <div class="stat-item-label">W-Statistic</div>
+          <div class="stat-item-value" id="sw-stat"></div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item-label">P-Value</div>
+          <div class="stat-item-value" id="sw-pval"></div>
+        </div>
+      </div>
+      <div class="formula-box" id="sw-conc" style="margin-top: 20px;"></div>
+    </div>
+
+    <!-- QQ Plot Approximation -->
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Q-Q Plot</div>
+          <div class="chart-card-sub">Theoretical vs Observed</div>
+        </div>
+        <span class="chart-tag amber">SCATTER</span>
+      </div>
+      <canvas id="qqChart" height="200"></canvas>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let charts = {};
+let probData = null;
+
+function getThemeColors() {
+  const isDark = document.body.classList.contains('dark-theme');
+  return {
+    text: isDark ? '#9ca3af' : '#64748b',
+    grid: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(15, 23, 42, 0.06)',
+    teal: isDark ? '#2dd4bf' : '#0f766e',
+    gold: isDark ? '#fbbf24' : '#d97706',
+    blue: isDark ? '#60a5fa' : '#2563eb'
+  };
+}
+
+function renderProbabilityCharts() {
+  if (!probData) return;
+  const colors = getThemeColors();
+
+  // Reset defaults
+  Chart.defaults.color = colors.text;
+  Chart.defaults.borderColor = colors.grid;
+  Chart.defaults.font.family = 'Outfit';
+
+  // Destroy previous instances
+  Object.keys(charts).forEach(key => {
+    if (charts[key]) charts[key].destroy();
+  });
+
+  const isDark = document.body.classList.contains('dark-theme');
+
+  // Binomial
+  charts.binomChart = new Chart(document.getElementById('binomChart'), {
+    type: 'bar',
+    data: {
+      labels: probData.distributions.binomial.data.map(d => d.k),
+      datasets: [{
+        label: 'Probability',
+        data: probData.distributions.binomial.data.map(d => d.p),
+        backgroundColor: colors.blue,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: 'k (successes)', color: colors.text }, grid: { display: false }, ticks: { color: colors.text } },
+        y: { grid: { color: colors.grid }, ticks: { color: colors.text } }
+      }
+    }
+  });
+
+  // Poisson
+  charts.poissonChart = new Chart(document.getElementById('poissonChart'), {
+    type: 'bar',
+    data: {
+      labels: probData.distributions.poisson.data.map(d => d.k),
+      datasets: [{
+        label: 'Probability',
+        data: probData.distributions.poisson.data.map(d => d.p),
+        backgroundColor: colors.teal,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: 'k (events)', color: colors.text }, grid: { display: false }, ticks: { color: colors.text } },
+        y: { grid: { color: colors.grid }, ticks: { color: colors.text } }
+      }
+    }
+  });
+
+  // Hypergeometric
+  charts.hyperChart = new Chart(document.getElementById('hyperChart'), {
+    type: 'bar',
+    data: {
+      labels: probData.distributions.hypergeometric.data.map(d => d.k),
+      datasets: [{
+        label: 'Probability',
+        data: probData.distributions.hypergeometric.data.map(d => d.p),
+        backgroundColor: colors.gold,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: 'x (successes)', color: colors.text }, grid: { display: false }, ticks: { color: colors.text } },
+        y: { grid: { color: colors.grid }, ticks: { color: colors.text } }
+      }
+    }
+  });
+
+  // Normal Curve
+  const curvePoints = probData.normality.curve_x.map((x, i) => ({ x: x, y: probData.normality.curve_y[i] }));
+  charts.normalChart = new Chart(document.getElementById('normalChart'), {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: 'PDF',
+        data: curvePoints,
+        borderColor: colors.teal,
+        backgroundColor: colors.teal + '15',
+        fill: true,
+        pointRadius: 0,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { type: 'linear', title: { display: true, text: 'Sales ($)', color: colors.text }, grid: { color: colors.grid }, ticks: { color: colors.text } },
+        y: { title: { display: true, text: 'Density', color: colors.text }, grid: { color: colors.grid }, ticks: { color: colors.text } }
+      }
+    }
+  });
+
+  // QQ Plot
+  const qqData = probData.normality.qq_theoretical.map((th, i) => ({ x: th, y: probData.normality.qq_observed[i] }));
+  const minQ = Math.min(...probData.normality.qq_theoretical);
+  const maxQ = Math.max(...probData.normality.qq_theoretical);
+
+  charts.qqChart = new Chart(document.getElementById('qqChart'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        {
+          label: 'Data',
+          data: qqData,
+          backgroundColor: colors.blue
+        },
+        {
+          type: 'line',
+          label: 'Reference Line',
+          data: [{x: minQ, y: Math.min(...probData.normality.qq_observed)}, {x: maxQ, y: Math.max(...probData.normality.qq_observed)}],
+          borderColor: colors.gold,
+          borderWidth: 2,
+          pointRadius: 0,
+          borderDash: [5, 5]
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: 'Theoretical Quantiles', color: colors.text }, grid: { color: colors.grid }, ticks: { color: colors.text } },
+        y: { title: { display: true, text: 'Observed Quantiles', color: colors.text }, grid: { color: colors.grid }, ticks: { color: colors.text } }
+      }
+    }
+  });
+}
+
+fetch('/api/v1/analytics/probability')
+  .then(r => r.json())
+  .then(res => {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('prob-content').style.display = 'block';
+
+    probData = res.payload;
+
+    // Empiricals
+    document.getElementById('emp-s500').textContent = probData.empirical.p_sales_high.toFixed(4);
+    document.getElementById('emp-profit').textContent = probData.empirical.p_profit_pos.toFixed(4);
+    document.getElementById('emp-disc').textContent = probData.empirical.p_discount_high.toFixed(4);
+
+    // Conditional
+    document.getElementById('cond-loss').textContent = probData.conditional.p_loss_given_high_discount.toFixed(4);
+    document.getElementById('cond-prof').textContent = probData.conditional.p_profit_given_high_sales.toFixed(4);
+
+    // Binomial text descriptor
+    document.getElementById('binom-desc').textContent = `Expected Mean: ${probData.distributions.binomial.mean}`;
+
+    // Poisson text descriptor
+    document.getElementById('poisson-desc').textContent = `Lambda (λ): ${probData.distributions.poisson.lambda}`;
+
+    // Hypergeometric text descriptor
+    document.getElementById('hyper-desc').textContent = `Mean: ${probData.distributions.hypergeometric.mean}`;
+
+    // Shapiro-Wilk text values
+    document.getElementById('sw-stat').textContent = probData.normality.shapiro.w.toFixed(4);
+    document.getElementById('sw-pval').textContent = probData.normality.shapiro.p.toExponential(2);
+    const conc = probData.normality.shapiro.p > 0.05 ? "Sample is Normally Distributed (p > 0.05)" : "Sample is NOT Normally Distributed (p < 0.05)";
+    document.getElementById('sw-conc').textContent = "Conclusion: " + conc;
+
+    renderProbabilityCharts();
+  });
+
+window.addEventListener('themeChanged', renderProbabilityCharts);
+</script>
+{% endblock %}

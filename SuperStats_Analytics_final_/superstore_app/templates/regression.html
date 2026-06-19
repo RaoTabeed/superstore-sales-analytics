@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+{% block title %}Regression Analysis — Demand Metric{% endblock %}
+{% block nav_reg %}active{% endblock %}
+{% block page_title %}Regression <span>Analysis</span>{% endblock %}
+
+{% block content %}
+<div id="loading" class="loading">
+  <div class="spinner"></div> Generating Models...
+</div>
+
+<div id="reg-content" style="display:none;">
+
+  <!-- Multiple Regression & Hypothesis -->
+  <div class="chart-grid chart-grid-2">
+    <div class="stat-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Multiple Linear Regression</div>
+          <div class="chart-card-sub">Sales Predictive Model</div>
+        </div>
+      </div>
+      <div class="formula-box" id="reg-formula"></div>
+      
+      <div class="stats-panel" style="grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 0;">
+        <div class="stat-item">
+          <div class="stat-item-label">R-Squared (R²)</div>
+          <div class="stat-item-value" id="reg-r2"></div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item-label">RMSE</div>
+          <div class="stat-item-value" id="reg-rmse"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-card purple">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Hypothesis Testing (t-test)</div>
+          <div class="chart-card-sub" id="ht-h0">H0: μ = $400</div>
+        </div>
+      </div>
+      <div class="stats-panel" style="grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 0;">
+        <div class="stat-item">
+          <div class="stat-item-label">t-Statistic</div>
+          <div class="stat-item-value" id="ht-t"></div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item-label">p-Value</div>
+          <div class="stat-item-value" id="ht-p"></div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item-label">Sample Mean</div>
+          <div class="stat-item-value" id="ht-mean" style="font-size: 16px;"></div>
+        </div>
+      </div>
+      <div class="formula-box" id="ht-conc" style="margin-top:16px; border-left-color: var(--primary);"></div>
+    </div>
+  </div>
+
+  <!-- Prediction Box -->
+  <div class="predict-box stat-card" style="box-shadow: none;">
+    <h3>Sales Predictor Engine</h3>
+    <div class="predict-inputs">
+      <div class="input-group">
+        <label>Quantity</label>
+        <input type="number" id="pred-qty" value="3" min="1">
+      </div>
+      <div class="input-group">
+        <label>Discount Ratio (e.g. 0.10)</label>
+        <input type="number" id="pred-disc" value="0.10" min="0" max="1" step="0.01">
+      </div>
+      <button type="button" class="btn btn-primary" id="pred-btn">Run Prediction</button>
+    </div>
+    
+    <div class="predict-result" id="pred-result-box">
+      <span class="big-num" id="pred-val"></span>
+      <span style="color:var(--text-label);">Estimated Sales Revenue</span>
+    </div>
+  </div>
+
+  <!-- Scatter Plots -->
+  <div class="chart-grid chart-grid-2" style="margin-top: 24px;">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Sales vs Quantity</div>
+          <div class="chart-card-sub">Simple Linear Regression</div>
+        </div>
+        <span class="chart-tag teal">SCATTER</span>
+      </div>
+      <canvas id="sqChart" height="200"></canvas>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Profit vs Discount</div>
+          <div class="chart-card-sub">Impact of discounting</div>
+        </div>
+        <span class="chart-tag amber">SCATTER</span>
+      </div>
+      <canvas id="pdChart" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Correlation Matrix -->
+  <div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-card-header">
+      <div>
+        <div class="chart-card-title">Correlation Matrix</div>
+        <div class="chart-card-sub">Pearson correlation coefficient (r)</div>
+      </div>
+    </div>
+    <div class="data-table-container" style="overflow-x: auto;">
+      <table class="data-table" id="corr-table">
+        <thead>
+          <tr>
+            <th>Variables</th>
+            <th>Sales</th>
+            <th>Profit</th>
+            <th>Quantity</th>
+            <th>Discount</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let charts = {};
+let regressionData = null;
+let regressionModel = null;
+
+function getThemeColors() {
+  const isDark = document.body.classList.contains('dark-theme');
+  return {
+    text: isDark ? '#9ca3af' : '#64748b',
+    grid: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(15, 23, 42, 0.06)',
+    teal: isDark ? '#2dd4bf' : '#0f766e',
+    gold: isDark ? '#fbbf24' : '#d97706',
+    blue: isDark ? '#60a5fa' : '#2563eb',
+    success: isDark ? '#34d399' : '#16a34a',
+    danger: isDark ? '#f87171' : '#dc2626',
+    textMuted: isDark ? '#6b7280' : '#94a3b8'
+  };
+}
+
+function showPredictionResult(amount, isError = false) {
+  const resultBox = document.getElementById('pred-result-box');
+  const resultVal = document.getElementById('pred-val');
+  resultBox.style.display = 'block';
+
+  if (isError) {
+    resultBox.style.backgroundColor = 'rgba(248, 113, 113, 0.15)';
+    resultBox.style.color = 'var(--danger)';
+    resultBox.style.borderColor = 'rgba(248, 113, 113, 0.3)';
+    resultVal.textContent = amount;
+    return;
+  }
+
+  resultBox.style.backgroundColor = '';
+  resultBox.style.color = '';
+  resultBox.style.borderColor = '';
+  resultVal.textContent = '$' + amount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
+function runSalesPrediction() {
+  const qtyInput = document.getElementById('pred-qty');
+  const discInput = document.getElementById('pred-disc');
+
+  let q = parseFloat(qtyInput.value);
+  let d = parseFloat(discInput.value);
+
+  if (isNaN(q) || q < 1) q = 1;
+  if (isNaN(d) || d < 0) d = 0;
+  if (d > 1) d = 1;
+
+  if (regressionModel) {
+    const predicted = Math.max(
+      0,
+      regressionModel.coef_quantity * q +
+      regressionModel.coef_discount * d +
+      regressionModel.intercept
+    );
+    showPredictionResult(predicted);
+    return;
+  }
+
+  fetch('/api/v1/analytics/predict', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quantity: q, discount: d })
+  })
+  .then(r => {
+    if (!r.ok) throw new Error(`Server returned status ${r.status}`);
+    return r.json();
+  })
+  .then(res => {
+    if (res.status === 'success') {
+      showPredictionResult(res.payload.estimated_sales);
+    } else {
+      throw new Error(res.message || 'Unknown server error');
+    }
+  })
+  .catch(err => {
+    showPredictionResult('Error — could not predict sales', true);
+    console.error('Prediction error:', err);
+  });
+}
+
+document.getElementById('pred-btn').addEventListener('click', runSalesPrediction);
+
+function renderRegressionCharts() {
+  if (!regressionData) return;
+  const colors = getThemeColors();
+
+  // Reset defaults
+  if (typeof Chart !== 'undefined') {
+    Chart.defaults.color = colors.text;
+    Chart.defaults.borderColor = colors.grid;
+    Chart.defaults.font.family = 'Outfit';
+  }
+
+  // Destroy previous instances
+  Object.keys(charts).forEach(key => {
+    if (charts[key]) charts[key].destroy();
+  });
+
+  if (typeof Chart === 'undefined') return;
+
+  // Sales vs Qty Chart
+  const sqData = regressionData.scatter_data.sales_vs_qty_x.map((q, i) => ({ x: q, y: regressionData.scatter_data.sales_vs_qty_y[i] }));
+  const sqLine = regressionData.scatter_data.sales_vs_qty_x.map((q, i) => ({ x: q, y: regressionData.scatter_data.sales_vs_qty_line[i] })).sort((a,b) => a.x - b.x);
+
+  charts.sqChart = new Chart(document.getElementById('sqChart'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        { label: 'Actual Sales', data: sqData, backgroundColor: colors.blue },
+        { type: 'line', label: 'Regression Line', data: sqLine, borderColor: colors.teal, borderWidth: 2, pointRadius: 0, fill: false }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: 'Quantity', color: colors.text }, grid: { color: colors.grid }, ticks: { color: colors.text } },
+        y: { title: { display: true, text: 'Sales ($)', color: colors.text }, grid: { color: colors.grid }, ticks: { color: colors.text } }
+      }
+    }
+  });
+
+  // Profit vs Discount Chart
+  const pdData = regressionData.scatter_data.profit_vs_disc_x.map((d, i) => ({ x: d, y: regressionData.scatter_data.profit_vs_disc_y[i] }));
+  const pdLine = regressionData.scatter_data.profit_vs_disc_x.map((d, i) => ({ x: d, y: regressionData.scatter_data.profit_vs_disc_line[i] })).sort((a,b) => a.x - b.x);
+
+  charts.pdChart = new Chart(document.getElementById('pdChart'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        { label: 'Profit', data: pdData, backgroundColor: colors.gold },
+        { type: 'line', label: 'Regression Line', data: pdLine, borderColor: colors.teal, borderWidth: 2, pointRadius: 0, fill: false }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: 'Discount', color: colors.text }, grid: { color: colors.grid }, ticks: { color: colors.text } },
+        y: { title: { display: true, text: 'Profit ($)', color: colors.text }, grid: { color: colors.grid }, ticks: { color: colors.text } }
+      }
+    }
+  });
+
+  // Correlation Table
+  const cTable = document.querySelector('#corr-table tbody');
+  cTable.innerHTML = '';
+  const cols = ['Sales', 'Profit', 'Quantity', 'Discount'];
+  cols.forEach(rowKey => {
+    const tr = document.createElement('tr');
+    let html = `<td><strong>${rowKey}</strong></td>`;
+    cols.forEach(colKey => {
+      const val = regressionData.correlations[rowKey][colKey];
+      let color = colors.text;
+      if (val >= 0.5 && val !== 1) color = colors.success;
+      else if (val <= -0.5) color = colors.danger;
+      else if (val === 1) color = colors.textMuted;
+      
+      html += `<td><span style="color:${color}; font-weight: 600;">${val.toFixed(3)}</span></td>`;
+    });
+    tr.innerHTML = html;
+    cTable.appendChild(tr);
+  });
+}
+
+fetch('/api/v1/analytics/regression')
+  .then(r => {
+    if (!r.ok) throw new Error(`Server returned status ${r.status}`);
+    return r.json();
+  })
+  .then(res => {
+    if (res.status !== 'success' || !res.payload) {
+      throw new Error(res.message || 'Invalid regression response');
+    }
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('reg-content').style.display = 'block';
+
+    regressionData = res.payload;
+    regressionModel = regressionData.multiple_model;
+
+    // Multi Regression Formula & text values
+    document.getElementById('reg-formula').textContent = `Sales = ${regressionData.multiple_model.coef_quantity}*Qty + ${regressionData.multiple_model.coef_discount}*Disc + ${regressionData.multiple_model.intercept}`;
+    document.getElementById('reg-r2').textContent = regressionData.multiple_model.r2.toFixed(4);
+    document.getElementById('reg-rmse').textContent = '$' + regressionData.multiple_model.rmse.toFixed(2);
+
+    // Hypothesis Test
+    document.getElementById('ht-h0').textContent = `H0: ${regressionData.hypothesis.null_hypothesis}`;
+    document.getElementById('ht-t').textContent = regressionData.hypothesis.t_statistic.toFixed(2);
+    document.getElementById('ht-p').textContent = regressionData.hypothesis.p_value.toExponential(2);
+    document.getElementById('ht-mean').textContent = '$' + regressionData.hypothesis.sample_mean;
+    
+    const reject = regressionData.hypothesis.p_value < 0.05;
+    document.getElementById('ht-conc').textContent = reject ? `Reject H0: Mean is significantly different from target.` : `Accept H0: No significant difference.`;
+
+    renderRegressionCharts();
+  })
+  .catch(err => {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('reg-content').style.display = 'block';
+    console.error('Regression load error:', err);
+  });
+
+window.addEventListener('themeChanged', renderRegressionCharts);
+</script>
+{% endblock %}
